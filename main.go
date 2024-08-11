@@ -1,71 +1,64 @@
 package main
 
 import (
-	"bufio"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
 
-func main() {
-	const DBfileName = "DB.csv"
-	var DBFile *os.File
-	var err error
+const DefaultDBName = "DB.csv"
 
-	fmt.Println("[To-Do app] by ironowl")
-	DBFile, err = os.OpenFile(DBfileName, os.O_RDWR|os.O_APPEND, 0666)
+var IDCounter int = 0
+
+// Function to check if a database exists; if not, prompt to create it
+func checkOrCreateDB(name string) (*os.File, error) {
+	// Try to open the database file
+	DBFile, err := os.OpenFile(name, os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
-		fmt.Printf("[Warning] no file named '%s' was found\n", DBfileName)
+		// If the file does not exist, prompt to create it
+		fmt.Println("Database file does not exist.")
 		var response string
 		fmt.Print("Create new DB? (y/N): ")
 		fmt.Scanf("%s", &response)
-
 		if response == "y" || response == "Y" {
-			// Create a new DB file
-			DBFile, err = os.Create(DBfileName)
+			// Create a new DB file with the specified name
+			DBFile, err = os.Create(name)
 			if err != nil {
-				fmt.Printf("[Error] Could not create file: %s\n", err)
-				return
+				return nil, errors.New("error creating the database")
 			}
-			fmt.Println("New database created successfully.")
+			fmt.Println("Database created:", name)
 		} else {
-			fmt.Println("No database created. Exiting.")
-			return
+			return nil, errors.New("database not created")
 		}
+	} else {
 	}
-	defer DBFile.Close()
+	return DBFile, nil
+}
 
-	fmt.Printf("Opening database '%s'\n", DBfileName)
-
-	writer := csv.NewWriter(DBFile)
-
-	var IDCounter int = 0
-
-	var CLInput string
-	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Print("> ")
-	for scanner.Scan() {
-		DBFile, err = os.OpenFile(DBfileName, os.O_RDWR|os.O_APPEND, 0666)
-		if err != nil {
-			fmt.Println("[Error] coudn't fetch database")
-		}
-		CLInput = scanner.Text()
-		var InputSplited []string = strings.Split(CLInput, " ")
-
-		switch InputSplited[0] {
-		case "create":
-			if len(InputSplited) < 2 {
-				fmt.Println("[Error] Task description required.")
-				continue
+func main() {
+	var CMDCreate = &cobra.Command{
+		Use:   "create [task name]",
+		Short: "Creates a task",
+		Long:  `later`,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			DB, err := checkOrCreateDB(DefaultDBName)
+			if err != nil {
+				panic(err)
 			}
+			defer DB.Close()
+			writer := csv.NewWriter(DB)
 			record := []string{
 				strconv.Itoa(IDCounter),
-				strings.Join(InputSplited[1:], " "),
+				strings.Join(args, " "),
 				"0",
 			}
-			err := writer.Write(record)
+			err = writer.Write(record)
 			if err != nil {
 				fmt.Printf("[Error] Could not write to file: %s\n", err)
 			} else {
@@ -76,26 +69,28 @@ func main() {
 			if err := writer.Error(); err != nil {
 				fmt.Printf("[Error] Could not flush to file: %s\n", err)
 			}
-		case "show":
-			reader := csv.NewReader(DBFile)
-			records, err := reader.ReadAll()
-			if err != nil {
-				println("[Error] Couldn't read data")
-			}
-			fmt.Println(records)
+		},
+	}
 
-		case "remove":
-			if len(InputSplited) < 2 {
-				fmt.Println("[Error] taskID is required")
-				continue
+	var CMDDelete = &cobra.Command{
+		Use:   "delete [task ID]",
+		Short: "Deletes a task",
+		Long:  `later`,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+
+			DB, err := checkOrCreateDB(DefaultDBName)
+			if err != nil {
+				panic(err)
 			}
+			defer DB.Close()
 
 			var filteredDBBuffer [][]string
-			reader := csv.NewReader(DBFile)
+			reader := csv.NewReader(DB)
 			records, err := reader.ReadAll()
 			if err != nil {
-				fmt.Println("[Error] Couldn't read data:", err)
-				continue
+				fmt.Println(err)
+				panic("[Error] Couldn't read data")
 			}
 
 			for _, line := range records {
@@ -104,19 +99,19 @@ func main() {
 					continue
 				}
 
-				if line[0] != InputSplited[1] {
+				if line[0] != args[0] {
 					filteredDBBuffer = append(filteredDBBuffer, line)
 				}
 			}
 
-			DBFile, err = os.Create(DBfileName)
+			DB, err = os.Create(DefaultDBName)
 			if err != nil {
 				fmt.Println("[Error] Error while writing to new file:", err)
 				return
 			}
-			defer DBFile.Close()
+			defer DB.Close()
 
-			csvWriter := csv.NewWriter(DBFile)
+			csvWriter := csv.NewWriter(DB)
 			err = csvWriter.WriteAll(filteredDBBuffer)
 			if err != nil {
 				fmt.Println("[Error] Couldn't write data:", err)
@@ -124,19 +119,50 @@ func main() {
 			}
 
 			csvWriter.Flush()
-		case "done":
-			var found bool = false
-			if len(InputSplited) < 2 {
-				fmt.Println("[Error] taskID is required")
-				continue
+		},
+	}
+	var CMDShow = &cobra.Command{
+		Use:   "show",
+		Short: "Creates a task",
+		Long:  `later`,
+		Args:  cobra.MaximumNArgs(0),
+		Run: func(cmd *cobra.Command, args []string) {
+
+			DB, err := checkOrCreateDB(DefaultDBName)
+			if err != nil {
+				panic(err)
 			}
+			defer DB.Close()
+
+			reader := csv.NewReader(DB)
+			records, err := reader.ReadAll()
+			if err != nil {
+				println("[Error] Couldn't read data")
+			}
+			fmt.Println(records)
+		},
+	}
+
+	var CMDDone = &cobra.Command{
+		Use:   "done [task name]",
+		Short: "Creates a task",
+		Long:  `later`,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			DB, err := checkOrCreateDB(DefaultDBName)
+			if err != nil {
+				panic(err)
+			}
+			defer DB.Close()
+
+			var found bool = false
 
 			var filteredDBBuffer [][]string
-			reader := csv.NewReader(DBFile)
+			reader := csv.NewReader(DB)
 			records, err := reader.ReadAll()
 			if err != nil {
 				fmt.Println("[Error] Couldn't read data:", err)
-				continue
+				panic(err)
 			}
 
 			for _, line := range records {
@@ -145,21 +171,21 @@ func main() {
 					continue
 				}
 
-				if line[0] == InputSplited[1] {
+				if line[0] == args[0] {
 					line[2] = "1"
 					found = true
 				}
 				filteredDBBuffer = append(filteredDBBuffer, line)
 			}
 
-			DBFile, err = os.Create(DBfileName)
+			DB, err = os.Create(DefaultDBName)
 			if err != nil {
 				fmt.Println("[Error] Error while writing to new file:", err)
 				return
 			}
-			defer DBFile.Close()
+			defer DB.Close()
 
-			csvWriter := csv.NewWriter(DBFile)
+			csvWriter := csv.NewWriter(DB)
 			err = csvWriter.WriteAll(filteredDBBuffer)
 			if err != nil {
 				fmt.Println("[Error] Couldn't write data:", err)
@@ -172,11 +198,17 @@ func main() {
 			} else {
 				fmt.Println("Couldn't find record")
 			}
-		case "exit":
-			return
-		default:
-			fmt.Printf("[Error] undefined command -> '%s'\n", InputSplited[0])
-		}
-		fmt.Print("> ")
+		},
 	}
+
+	var rootCmd = &cobra.Command{
+		Use:   "toDo",
+		Short: "Basic to-do app",
+	}
+	rootCmd.AddCommand(CMDCreate)
+	rootCmd.AddCommand(CMDDelete)
+	rootCmd.AddCommand(CMDShow)
+	rootCmd.AddCommand(CMDDone)
+	rootCmd.Execute()
+
 }
