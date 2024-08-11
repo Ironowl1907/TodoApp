@@ -47,6 +47,10 @@ func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Print("> ")
 	for scanner.Scan() {
+		DBFile, err = os.OpenFile(DBfileName, os.O_RDWR|os.O_APPEND, 0666)
+		if err != nil {
+			fmt.Println("[Error] coudn't fetch database")
+		}
 		CLInput = scanner.Text()
 		var InputSplited []string = strings.Split(CLInput, " ")
 
@@ -73,7 +77,13 @@ func main() {
 				fmt.Printf("[Error] Could not flush to file: %s\n", err)
 			}
 		case "show":
-			fmt.Println("Show functionality not implemented yet.")
+			reader := csv.NewReader(DBFile)
+			records, err := reader.ReadAll()
+			if err != nil {
+				println("[Error] Could't read data")
+			}
+			fmt.Println(records)
+
 		case "remove":
 			fmt.Println("Remove functionality not implemented yet.")
 		case "done":
