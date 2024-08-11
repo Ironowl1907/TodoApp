@@ -89,35 +89,89 @@ func main() {
 				fmt.Println("[Error] taskID is required")
 				continue
 			}
+
 			var filteredDBBuffer [][]string
 			reader := csv.NewReader(DBFile)
 			records, err := reader.ReadAll()
 			if err != nil {
-				println("[Error] Couldn't read data")
+				fmt.Println("[Error] Couldn't read data:", err)
+				continue
 			}
+
 			for _, line := range records {
+				if len(line) < 3 {
+					fmt.Println("[Error] Invalid record format:", line)
+					continue
+				}
+
 				if line[0] != InputSplited[1] {
-					var csvFomatedLine string
-					for _, part := range line {
-						csvFomatedLine += part + ","
-					}
-					csvFomatedLine = csvFomatedLine[:len(csvFomatedLine)-1]
 					filteredDBBuffer = append(filteredDBBuffer, line)
 				}
-				DBFile, err = os.Create(DBfileName)
-				if err != nil {
-					fmt.Println("[Error] Error while writing to new file: ", err)
-				}
-				csvWriter := csv.NewWriter(DBFile)
-
-				err = csvWriter.WriteAll(filteredDBBuffer)
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
 			}
+
+			DBFile, err = os.Create(DBfileName)
+			if err != nil {
+				fmt.Println("[Error] Error while writing to new file:", err)
+				return
+			}
+			defer DBFile.Close()
+
+			csvWriter := csv.NewWriter(DBFile)
+			err = csvWriter.WriteAll(filteredDBBuffer)
+			if err != nil {
+				fmt.Println("[Error] Couldn't write data:", err)
+				return
+			}
+
+			csvWriter.Flush()
 		case "done":
-			fmt.Println("Done functionality not implemented yet.")
+			var found bool = false
+			if len(InputSplited) < 2 {
+				fmt.Println("[Error] taskID is required")
+				continue
+			}
+
+			var filteredDBBuffer [][]string
+			reader := csv.NewReader(DBFile)
+			records, err := reader.ReadAll()
+			if err != nil {
+				fmt.Println("[Error] Couldn't read data:", err)
+				continue
+			}
+
+			for _, line := range records {
+				if len(line) < 3 {
+					fmt.Println("[Error] Invalid record format:", line)
+					continue
+				}
+
+				if line[0] == InputSplited[1] {
+					line[2] = "1"
+					found = true
+				}
+				filteredDBBuffer = append(filteredDBBuffer, line)
+			}
+
+			DBFile, err = os.Create(DBfileName)
+			if err != nil {
+				fmt.Println("[Error] Error while writing to new file:", err)
+				return
+			}
+			defer DBFile.Close()
+
+			csvWriter := csv.NewWriter(DBFile)
+			err = csvWriter.WriteAll(filteredDBBuffer)
+			if err != nil {
+				fmt.Println("[Error] Couldn't write data:", err)
+				return
+			}
+
+			csvWriter.Flush()
+			if found {
+				fmt.Println("Task marked as done successfully.")
+			} else {
+				fmt.Println("Couldn't find record")
+			}
 		case "exit":
 			return
 		default:
