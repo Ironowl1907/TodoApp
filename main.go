@@ -80,12 +80,42 @@ func main() {
 			reader := csv.NewReader(DBFile)
 			records, err := reader.ReadAll()
 			if err != nil {
-				println("[Error] Could't read data")
+				println("[Error] Couldn't read data")
 			}
 			fmt.Println(records)
 
 		case "remove":
-			fmt.Println("Remove functionality not implemented yet.")
+			if len(InputSplited) < 2 {
+				fmt.Println("[Error] taskID is required")
+				continue
+			}
+			var filteredDBBuffer [][]string
+			reader := csv.NewReader(DBFile)
+			records, err := reader.ReadAll()
+			if err != nil {
+				println("[Error] Couldn't read data")
+			}
+			for _, line := range records {
+				if line[0] != InputSplited[1] {
+					var csvFomatedLine string
+					for _, part := range line {
+						csvFomatedLine += part + ","
+					}
+					csvFomatedLine = csvFomatedLine[:len(csvFomatedLine)-1]
+					filteredDBBuffer = append(filteredDBBuffer, line)
+				}
+				DBFile, err = os.Create(DBfileName)
+				if err != nil {
+					fmt.Println("[Error] Error while writing to new file: ", err)
+				}
+				csvWriter := csv.NewWriter(DBFile)
+
+				err = csvWriter.WriteAll(filteredDBBuffer)
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+			}
 		case "done":
 			fmt.Println("Done functionality not implemented yet.")
 		case "exit":
