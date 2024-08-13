@@ -178,7 +178,6 @@ func main() {
 	var CMDShow = &cobra.Command{
 		Use:   "show",
 		Short: "Show tasks",
-		Args:  cobra.MaximumNArgs(0),
 		Run: func(cmd *cobra.Command, args []string) {
 			DB, err := checkOrCreateDB(DefaultDBName)
 			if err != nil {
@@ -186,6 +185,8 @@ func main() {
 				return
 			}
 			defer DB.Close()
+
+			allTask, _ := cmd.Flags().GetBool("all")
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 			reader := csv.NewReader(DB)
@@ -202,7 +203,9 @@ func main() {
 					fmt.Println("[Warning] Skipping incomplete record:", line)
 					continue
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\n", line[0], line[1], line[2])
+				if line[2] == "0" || allTask {
+					fmt.Fprintf(w, "%s\t%s\t%s\n", line[0], line[1], line[2])
+				}
 			}
 
 			if err := w.Flush(); err != nil {
@@ -275,6 +278,7 @@ func main() {
 	rootCmd.AddCommand(CMDCreate)
 	rootCmd.AddCommand(CMDDelete)
 	rootCmd.AddCommand(CMDShow)
+	CMDShow.Flags().BoolP("all", "a", false, "Show all the created (non deleted) tasks")
 	rootCmd.AddCommand(CMDDone)
 	rootCmd.Execute()
 }
