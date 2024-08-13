@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 )
@@ -15,36 +16,74 @@ const DefaultDBName = "DB.csv"
 
 var IDCounter int = 0
 
-// Function to check if a database exists; if not, prompt to create it
+// checkOrCreateDB checks if the database file exists and has the correct format; if not, it creates a new one.
 func checkOrCreateDB(name string) (*os.File, error) {
 	// Try to open the database file
-	DBFile, err := os.OpenFile(name, os.O_RDWR|os.O_APPEND, 0666)
+	DBFile, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		// If the file does not exist, prompt to create it
-		fmt.Println("Database file does not exist.")
-		var response string
-		fmt.Print("Create new DB? (y/N): ")
-		fmt.Scanf("%s", &response)
-		if response == "y" || response == "Y" {
-			// Create a new DB file with the specified name
-			DBFile, err = os.Create(name)
-			if err != nil {
-				return nil, errors.New("error creating the database")
-			}
-			fmt.Println("Database created:", name)
-		} else {
-			return nil, errors.New("database not created")
-		}
-	} else {
+		return nil, err
 	}
+
+	// Check if the file is empty
+	fileInfo, err := DBFile.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	// If the file is empty, write the header row
+	if fileInfo.Size() == 0 {
+		writer := csv.NewWriter(DBFile)
+		err = writer.Write([]string{"ID", "Name", "Done"})
+		if err != nil {
+			return nil, err
+		}
+		writer.Flush()
+	}
+
+	// Check if the header row has the correct format
+	reader := csv.NewReader(DBFile)
+	firstLine, err := reader.Read()
+	if err != nil {
+		return nil, err
+	}
+
+	if firstLine[0] != "ID" || firstLine[1] != "Name" || firstLine[2] != "Done" {
+		return nil, errors.New("format error in the DB file")
+	}
+
+	// Reset the file pointer to the beginning
+	_, err = DBFile.Seek(0, 0)
+	if err != nil {
+		return nil, err
+	}
+
 	return DBFile, nil
+}
+
+// updateIDCounter updates the global IDCounter based on existing records in the database.
+func updateIDCounter(DB *os.File) error {
+	reader := csv.NewReader(DB)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return err
+	}
+
+	// Find the maximum ID in the existing records
+	for _, record := range records[1:] { // Skip header
+		if len(record) > 0 {
+			id, err := strconv.Atoi(record[0])
+			if err == nil && id >= IDCounter {
+				IDCounter = id + 1
+			}
+		}
+	}
+	return nil
 }
 
 func main() {
 	var CMDCreate = &cobra.Command{
 		Use:   "create [task name]",
 		Short: "Creates a task",
-		Long:  `later`,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			DB, err := checkOrCreateDB(DefaultDBName)
@@ -52,6 +91,13 @@ func main() {
 				panic(err)
 			}
 			defer DB.Close()
+
+			// Update IDCounter based on existing records
+			if err := updateIDCounter(DB); err != nil {
+				fmt.Printf("[Error] Couldn't update ID counter: %s\n", err)
+				return
+			}
+
 			writer := csv.NewWriter(DB)
 			record := []string{
 				strconv.Itoa(IDCounter),
@@ -75,10 +121,9 @@ func main() {
 	var CMDDelete = &cobra.Command{
 		Use:   "delete [task ID]",
 		Short: "Deletes a task",
-		Long:  `later`,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-
+			var deleted bool = false
 			DB, err := checkOrCreateDB(DefaultDBName)
 			if err != nil {
 				panic(err)
@@ -90,7 +135,7 @@ func main() {
 			records, err := reader.ReadAll()
 			if err != nil {
 				fmt.Println(err)
-				panic("[Error] Couldn't read data")
+				return
 			}
 
 			for _, line := range records {
@@ -101,9 +146,17 @@ func main() {
 
 				if line[0] != args[0] {
 					filteredDBBuffer = append(filteredDBBuffer, line)
+				}	else {
+					deleted = true
 				}
 			}
 
+			if !deleted {
+				println("No matching ID in the database")
+				return
+			}
+
+			// Recreate the DB file without the deleted task
 			DB, err = os.Create(DefaultDBName)
 			if err != nil {
 				fmt.Println("[Error] Error while writing to new file:", err)
@@ -121,32 +174,46 @@ func main() {
 			csvWriter.Flush()
 		},
 	}
+
 	var CMDShow = &cobra.Command{
 		Use:   "show",
-		Short: "Creates a task",
-		Long:  `later`,
+		Short: "Show tasks",
 		Args:  cobra.MaximumNArgs(0),
 		Run: func(cmd *cobra.Command, args []string) {
-
 			DB, err := checkOrCreateDB(DefaultDBName)
 			if err != nil {
-				panic(err)
+				fmt.Printf("[Error] Couldn't access the database: %v\n", err)
+				return
 			}
 			defer DB.Close()
 
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 			reader := csv.NewReader(DB)
+
 			records, err := reader.ReadAll()
 			if err != nil {
-				println("[Error] Couldn't read data")
+				fmt.Println("[Error] Couldn't read data from the CSV file.")
+				return
 			}
-			fmt.Println(records)
+
+			fmt.Fprintln(w, "ID\tTask\tDone")
+			for _, line := range records[1:] {
+				if len(line) < 3 {
+					fmt.Println("[Warning] Skipping incomplete record:", line)
+					continue
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\n", line[0], line[1], line[2])
+			}
+
+			if err := w.Flush(); err != nil {
+				fmt.Printf("[Error] Couldn't flush writer: %v\n", err)
+			}
 		},
 	}
 
 	var CMDDone = &cobra.Command{
-		Use:   "done [task name]",
-		Short: "Creates a task",
-		Long:  `later`,
+		Use:   "done [task ID]",
+		Short: "Marks a task as done",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			DB, err := checkOrCreateDB(DefaultDBName)
@@ -155,14 +222,13 @@ func main() {
 			}
 			defer DB.Close()
 
-			var found bool = false
-
+			var found bool
 			var filteredDBBuffer [][]string
 			reader := csv.NewReader(DB)
 			records, err := reader.ReadAll()
 			if err != nil {
 				fmt.Println("[Error] Couldn't read data:", err)
-				panic(err)
+				return
 			}
 
 			for _, line := range records {
@@ -172,12 +238,13 @@ func main() {
 				}
 
 				if line[0] == args[0] {
-					line[2] = "1"
+					line[2] = "1" // Mark as done
 					found = true
 				}
 				filteredDBBuffer = append(filteredDBBuffer, line)
 			}
 
+			// Recreate the DB file with the updated task status
 			DB, err = os.Create(DefaultDBName)
 			if err != nil {
 				fmt.Println("[Error] Error while writing to new file:", err)
@@ -210,5 +277,4 @@ func main() {
 	rootCmd.AddCommand(CMDShow)
 	rootCmd.AddCommand(CMDDone)
 	rootCmd.Execute()
-
 }
