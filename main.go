@@ -33,7 +33,7 @@ func checkOrCreateDB(name string) (*os.File, error) {
 	// If the file is empty, write the header row
 	if fileInfo.Size() == 0 {
 		writer := csv.NewWriter(DBFile)
-		err = writer.Write([]string{"ID", "Name", "Done"})
+		err = writer.Write([]string{"ID", "Name", "Priority", "Done"})
 		if err != nil {
 			return nil, err
 		}
@@ -47,7 +47,7 @@ func checkOrCreateDB(name string) (*os.File, error) {
 		return nil, err
 	}
 
-	if firstLine[0] != "ID" || firstLine[1] != "Name" || firstLine[2] != "Done" {
+	if firstLine[0] != "ID" || firstLine[1] != "Name" || firstLine[2] != "Priority" || firstLine[3] != "Done" {
 		return nil, errors.New("format error in the DB file")
 	}
 
@@ -92,6 +92,8 @@ func main() {
 			}
 			defer DB.Close()
 
+			priorLevel, _ := cmd.Flags().GetInt("priority")
+
 			// Update IDCounter based on existing records
 			if err := updateIDCounter(DB); err != nil {
 				fmt.Printf("[Error] Couldn't update ID counter: %s\n", err)
@@ -102,6 +104,7 @@ func main() {
 			record := []string{
 				strconv.Itoa(IDCounter),
 				strings.Join(args, " "),
+				strconv.Itoa(priorLevel),
 				"0",
 			}
 			err = writer.Write(record)
@@ -186,7 +189,7 @@ func main() {
 			}
 			defer DB.Close()
 
-			allTask, _ := cmd.Flags().GetBool("all")
+			unDone, _ := cmd.Flags().GetBool("undone")
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 			reader := csv.NewReader(DB)
@@ -197,15 +200,15 @@ func main() {
 				return
 			}
 
-			fmt.Fprintln(w, "ID\tTask\tDone")
+			fmt.Fprintln(w, "ID\tTask\tPriority\tDone")
 			for _, line := range records[1:] {
 				if len(line) < 3 {
 					fmt.Println("[Warning] Skipping incomplete record:", line)
 					continue
 				}
-				if line[2] == "0" || allTask {
-					fmt.Fprintf(w, "%s\t%s ", line[0], line[1])
-					if line[2] == "0" {
+				if line[2] == "0" || !unDone {
+					fmt.Fprintf(w, "%s\t%s\t%s ", line[0], line[1], line[2])
+					if line[3] == "0" {
 						fmt.Fprint(w, "\t[ ]\n")
 					} else {
 						fmt.Fprint(w, "\t[X]\n")
@@ -281,7 +284,7 @@ func main() {
 		Short: "Edits a task",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			var deleted bool = false
+			var edited bool = false
 			DB, err := checkOrCreateDB(DefaultDBName)
 			if err != nil {
 				panic(err)
@@ -307,11 +310,11 @@ func main() {
 				} else {
 					line = []string{line[0], strings.Join(args[1:], " "), line[2]}
 					filteredDBBuffer = append(filteredDBBuffer, line)
-					deleted = true
+					edited = true
 				}
 			}
 
-			if !deleted {
+			if !edited {
 				println("No matching ID in the database")
 				return
 			}
@@ -340,10 +343,11 @@ func main() {
 		Short: "Basic to-do app",
 	}
 	rootCmd.AddCommand(CMDCreate)
+	CMDCreate.Flags().IntP("priority", "p", 1, "Set a priority for the task")
 	rootCmd.AddCommand(CMDDelete)
 	rootCmd.AddCommand(CMDList)
 	rootCmd.AddCommand(CMDEdit)
-	CMDList.Flags().BoolP("all", "a", false, "Lists all the created (non deleted) tasks")
+	CMDList.Flags().BoolP("undone", "u", false, "Lists all the undone (non deleted) tasks")
 	rootCmd.AddCommand(CMDDone)
 	rootCmd.Execute()
 }
