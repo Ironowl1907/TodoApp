@@ -204,7 +204,12 @@ func main() {
 					continue
 				}
 				if line[2] == "0" || allTask {
-					fmt.Fprintf(w, "%s\t%s\t%s\n", line[0], line[1], line[2])
+					fmt.Fprintf(w, "%s\t%s ", line[0], line[1])
+					if line[2] == "0" {
+						fmt.Fprint(w, "\t[ ]\n")
+					} else {
+						fmt.Fprint(w, "\t[X]\n")
+					}
 				}
 			}
 
