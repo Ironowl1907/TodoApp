@@ -175,9 +175,9 @@ func main() {
 		},
 	}
 
-	var CMDShow = &cobra.Command{
-		Use:   "show",
-		Short: "Show tasks",
+	var CMDList = &cobra.Command{
+		Use:   "list",
+		Short: "Lists tasks",
 		Run: func(cmd *cobra.Command, args []string) {
 			DB, err := checkOrCreateDB(DefaultDBName)
 			if err != nil {
@@ -276,14 +276,74 @@ func main() {
 		},
 	}
 
+	var CMDEdit = &cobra.Command{
+		Use:   "edit [task ID] [new taks name]",
+		Short: "Edits a task",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var deleted bool = false
+			DB, err := checkOrCreateDB(DefaultDBName)
+			if err != nil {
+				panic(err)
+			}
+			defer DB.Close()
+
+			var filteredDBBuffer [][]string
+			reader := csv.NewReader(DB)
+			records, err := reader.ReadAll()
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+
+			for _, line := range records {
+				if len(line) < 3 {
+					fmt.Println("[Error] Invalid record format:", line)
+					continue
+				}
+
+				if line[0] != args[0] {
+					filteredDBBuffer = append(filteredDBBuffer, line)
+				} else {
+					line = []string{line[0], strings.Join(args[1:], " "), line[2]}
+					filteredDBBuffer = append(filteredDBBuffer, line)
+					deleted = true
+				}
+			}
+
+			if !deleted {
+				println("No matching ID in the database")
+				return
+			}
+
+			// Recreate the DB with the edited one
+			DB, err = os.Create(DefaultDBName)
+			if err != nil {
+				fmt.Println("[Error] Error while writing to new file:", err)
+				return
+			}
+			defer DB.Close()
+
+			csvWriter := csv.NewWriter(DB)
+			err = csvWriter.WriteAll(filteredDBBuffer)
+			if err != nil {
+				fmt.Println("[Error] Couldn't write data:", err)
+				return
+			}
+
+			csvWriter.Flush()
+		},
+	}
+
 	var rootCmd = &cobra.Command{
 		Use:   "toDo",
 		Short: "Basic to-do app",
 	}
 	rootCmd.AddCommand(CMDCreate)
 	rootCmd.AddCommand(CMDDelete)
-	rootCmd.AddCommand(CMDShow)
-	CMDShow.Flags().BoolP("all", "a", false, "Show all the created (non deleted) tasks")
+	rootCmd.AddCommand(CMDList)
+	rootCmd.AddCommand(CMDEdit)
+	CMDList.Flags().BoolP("all", "a", false, "Lists all the created (non deleted) tasks")
 	rootCmd.AddCommand(CMDDone)
 	rootCmd.Execute()
 }
