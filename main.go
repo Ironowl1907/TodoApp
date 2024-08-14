@@ -40,6 +40,12 @@ func checkOrCreateDB(name string) (*os.File, error) {
 		writer.Flush()
 	}
 
+	// Reset the file pointer to the beginning
+	_, err = DBFile.Seek(0, 0)
+	if err != nil {
+		return nil, err
+	}
+
 	// Check if the header row has the correct format
 	reader := csv.NewReader(DBFile)
 	firstLine, err := reader.Read()
