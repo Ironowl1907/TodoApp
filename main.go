@@ -32,6 +32,7 @@ func checkOrCreateDB(name string) (*os.File, error) {
 
 	// If the file is empty, write the header row
 	if fileInfo.Size() == 0 {
+		fmt.Println("[Warning] Creating and formating new database file")
 		writer := csv.NewWriter(DBFile)
 		err = writer.Write([]string{"ID", "Name", "Priority", "Done"})
 		if err != nil {
@@ -212,7 +213,7 @@ func main() {
 					fmt.Println("[Warning] Skipping incomplete record:", line)
 					continue
 				}
-				if line[2] == "0" || !unDone {
+				if line[3] == "0" || !unDone {
 					fmt.Fprintf(w, "%s\t%s\t%s ", line[0], line[1], line[2])
 					if line[3] == "0" {
 						fmt.Fprint(w, "\t[ ]\n")
@@ -255,9 +256,10 @@ func main() {
 				}
 
 				if line[0] == args[0] {
-					line[2] = "1" // Mark as done
+					line[3] = "1" // Mark as done
 					found = true
 				}
+
 				filteredDBBuffer = append(filteredDBBuffer, line)
 			}
 
