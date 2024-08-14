@@ -408,7 +408,7 @@ func main() {
 	}
 
 	var rootCmd = &cobra.Command{
-		Use:   "toDo",
+		Use:   "todo",
 		Short: "Basic to-do app",
 	}
 	rootCmd.AddCommand(CMDCreate)
